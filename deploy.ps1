@@ -1,7 +1,7 @@
 # Build and optionally publish every supported MineLatino AFK Farm artifact.
 # mods.json is changed only after GitHub confirms that the release exists.
 param(
-    [string]$Version = '0.1.0-alpha.10',
+    [string]$Version = '0.1.0-alpha.11',
     [string[]]$MinecraftVersions = @('1.21.4', '1.21.11', '26.2'),
     [switch]$SkipBuild,
     [switch]$SkipGithub,
@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = $PSScriptRoot
-$repo = 'FredyGraces20/MineLatino-Afk-Farm'
+$repo = 'GatinoMC/MineLatino-Afk-Farm'
 $tag = "v$Version"
 $javaHome21 = 'C:\Users\fredy\AppData\Roaming\.minecraft\runtime\java-runtime-delta\windows\java-runtime-delta'
 $javaHome25 = if ($env:MINELATINO_JAVA25_HOME) { $env:MINELATINO_JAVA25_HOME } else { 'C:\Program Files\Java\jdk-25.0.3' }

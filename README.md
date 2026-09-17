@@ -12,9 +12,10 @@ sesión ya vinculada de Cosméticos MineLatino, admite mensajes multilínea, his
 scroll, copiado, cancelación y conversaciones nuevas. Abrirla detiene de forma segura
 la automatización y nunca la reanuda por sí sola.
 
-El mod canjea la sesión de juego por un Bearer de diez minutos con los alcances
-`ai:chat` y `afk:assistant`. La clave del proveedor no existe en el JAR ni en el
-launcher: vive solamente en el backend privado. Sin una cuenta conectada se muestra
+El mod canjea la sesión de juego por credenciales Bearer separadas y de corta duración:
+una exclusiva para `ai:chat` y otra persistente y renovable para `afk:usage`. La clave
+del proveedor no existe en el JAR ni en el launcher: vive solamente en el backend privado.
+Sin una cuenta conectada se muestra
 `Vuelve a vincular tu cuenta MineLatino`.
 
 ## Compatibilidad
@@ -73,6 +74,11 @@ cuenta MineLatino y también se pueden validar hasta 10 comandos y simular sus e
 real permanece en el backend; el mod muestra cuánto queda y no inicia el flujo cuando llega a cero.
 Mientras está activo abre una única sesión por cuenta y envía un heartbeat cada 20 segundos. El
 servidor calcula el consumo con su propio reloj y detiene permisos vencidos o sin saldo.
+
+Mientras una sesión AFK autorizada está activa, el cliente mantiene 35 FPS tanto en primer plano
+como al usar Alt+Tab, sin pausar al perder el foco. La automatización sigue gobernada por ticks y
+no por cuadros renderizados. Al detenerse o completar el flujo se restauran inmediatamente las
+preferencias anteriores del usuario.
 
 ## Compilar
 

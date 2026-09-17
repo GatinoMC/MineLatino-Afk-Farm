@@ -87,6 +87,7 @@ public final class AfkFarmClient {
 
     private void startAuthorized() {
         if (recording) stopRecording();
+        BackgroundPerformanceController.activate();
         active = true;
         state = State.WAITING_WORLD;
         sequenceStarted = false;
@@ -130,6 +131,7 @@ public final class AfkFarmClient {
         releaseControls();
         AfkUsageController.instance().stop();
         active = false;
+        BackgroundPerformanceController.deactivate();
         state = State.IDLE;
         sequenceStarted = false;
         suspendedState = null;
@@ -335,15 +337,11 @@ public final class AfkFarmClient {
     private void beginAttackOrComplete(AfkFarmConfig.Snapshot config) {
         clearLockedTarget();
         if (!config.autoAttackEnabled()) {
-            state = State.COMPLETE;
-            active = false;
-            status = "Destino alcanzado";
+            complete("Destino alcanzado");
             return;
         }
         if (!attackAuthorized(Minecraft.getInstance())) {
-            state = State.COMPLETE;
-            active = false;
-            status = "Ataque bloqueado: servidor no autorizado";
+            complete("Ataque bloqueado: servidor no autorizado");
             return;
         }
         state = State.ATTACKING;
@@ -353,9 +351,7 @@ public final class AfkFarmClient {
     private void tickAttack(Minecraft minecraft) {
         AfkFarmConfig.Snapshot config = config();
         if (!config.autoAttackEnabled() || !attackAuthorized(minecraft)) {
-            state = State.COMPLETE;
-            active = false;
-            status = "Ataque automático detenido";
+            complete("Ataque automático detenido");
             return;
         }
         LivingEntity target = nearestTarget(minecraft, config);
@@ -429,6 +425,15 @@ public final class AfkFarmClient {
     private void clearLockedTarget() {
         lockedTargetId = -1;
         lockedTargetUuid = null;
+    }
+
+    private void complete(String reason) {
+        releaseControls();
+        AfkUsageController.instance().stop();
+        active = false;
+        BackgroundPerformanceController.deactivate();
+        state = State.COMPLETE;
+        status = reason;
     }
 
     private boolean allowed(LivingEntity entity, AfkFarmConfig.Snapshot config) {

@@ -60,7 +60,7 @@ public final class AfkUsageApi {
     private CompletableFuture<String> credential(CosmeticsSessionBridge.LinkedSession session) {
         Credential current = credential;
         if (current != null && Objects.equals(current.parentToken(), session.token())
-                && current.expiresAt() - System.currentTimeMillis() > 30_000)
+                && current.expiresAt() - System.currentTimeMillis() > 120_000)
             return CompletableFuture.completedFuture(current.token());
         return send(session.apiBaseUrl() + "/v1/afk/token", "POST", "{}", session.token()).thenApply(response -> {
             if (response.statusCode() != 201) throw failure(response);

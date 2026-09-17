@@ -3,6 +3,6 @@
   "package": "com.minelatino.afkfarm.client.mixin",
   "compatibilityLevel": "JAVA_25",
   "refmap": "minelatino_afk_farm.refmap.json",
-  "client": ["MinecraftMixin", "PauseScreenMixin", "DisconnectedScreenMixin", "GuiMixin", "OptionsMixin"],
+  "client": ["MinecraftMixin", "PauseScreenMixin", "DisconnectedScreenMixin", "GuiMixin", "OptionsMixin", "FramerateLimitTrackerMixin"],
   "injectors": { "defaultRequire": 1 }
 }
