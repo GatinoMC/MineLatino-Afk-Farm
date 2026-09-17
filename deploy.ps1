@@ -1,7 +1,7 @@
 # Build and optionally publish every supported MineLatino AFK Farm artifact.
 # mods.json is changed only after GitHub confirms that the release exists.
 param(
-    [string]$Version = '0.1.0-alpha.11',
+    [string]$Version = '0.1.0-alpha.12',
     [string[]]$MinecraftVersions = @('1.21.4', '1.21.11', '26.2'),
     [switch]$SkipBuild,
     [switch]$SkipGithub,
