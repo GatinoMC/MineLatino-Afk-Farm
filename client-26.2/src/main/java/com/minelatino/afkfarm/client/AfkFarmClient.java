@@ -136,13 +136,14 @@ public final class AfkFarmClient {
         sequenceStarted = false;
         suspendedState = null;
         clearLockedTarget();
+        artificialPlayers.clearNearbyPlayers();
         status = reason == null ? "" : reason;
     }
 
     public void tick() {
         ticks++;
         Minecraft minecraft = Minecraft.getInstance();
-        artificialPlayers.tick(minecraft);
+        artificialPlayers.tick(minecraft, active);
         // Key presses must be consumed every client tick. Keeping this here makes
         // Fabric's Minecraft mixin and Forge's client tick event share the exact
         // same behaviour and also lets the configured key close an open assistant.
@@ -433,12 +434,15 @@ public final class AfkFarmClient {
         active = false;
         BackgroundPerformanceController.deactivate();
         state = State.COMPLETE;
+        artificialPlayers.clearNearbyPlayers();
         status = reason;
     }
 
     private boolean allowed(LivingEntity entity, AfkFarmConfig.Snapshot config) {
-        if (entity instanceof Player player)
+        if (entity instanceof Player player) {
+            if (artificialPlayers.isNearbyNetworkPlayer(player)) return false;
             return config.attackArtificialPlayers() && artificialPlayers.isArtificial(player);
+        }
         String id = BuiltInRegistries.ENTITY_TYPE.getKey(entity.getType()).toString();
         if (entity instanceof Enemy) return AfkFarmAttackPolicy.allowsId(
                 config.attackHostileMobs(), config.allowedHostileMobs(), id);
