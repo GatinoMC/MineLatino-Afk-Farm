@@ -1,6 +1,5 @@
 package com.minelatino.afkfarm.client;
 
-import com.minelatino.afkfarm.AfkFarmConfig;
 import java.util.function.Consumer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -14,7 +13,6 @@ import net.minecraft.network.chat.Component;
 
 /** Adds reconnect controls only when the local setting is enabled. */
 public final class AutoReconnect {
-    private static final int RECONNECT_DELAY_SECONDS = 5;
     private static ServerData lastServer;
     private static DisconnectedScreen screen;
     private static StringWidget statusWidget;
@@ -31,11 +29,12 @@ public final class AutoReconnect {
     public static void install(DisconnectedScreen disconnected, Consumer<AbstractWidget> add) {
         Minecraft minecraft = Minecraft.getInstance();
         remember(minecraft.getCurrentServer());
-        if (!config().autoReconnect() || lastServer == null) return;
+        int delaySeconds = AfkFarmClient.instance().onDisconnected();
+        if (delaySeconds < 0 || lastServer == null) return;
         screen = disconnected;
         cancelled = false;
         attempt++;
-        deadline = System.currentTimeMillis() + RECONNECT_DELAY_SECONDS * 1000L;
+        deadline = System.currentTimeMillis() + delaySeconds * 1000L;
         int width = Math.min(180, Math.max(120, disconnected.width - 8));
         int x = Math.max(4, disconnected.width - width - 4);
         statusWidget = new StringWidget(x, 7, width, 18, Component.empty(), minecraft.font);
@@ -49,7 +48,7 @@ public final class AutoReconnect {
 
     public static void tick() {
         if (screen == null || Minecraft.getInstance().screen != screen || cancelled) return;
-        if (!config().autoReconnect()) { cancel(); return; }
+        if (!AfkFarmClient.instance().active()) { cancel(); return; }
         updateStatus();
         if (System.currentTimeMillis() >= deadline) reconnect();
     }
@@ -80,11 +79,12 @@ public final class AutoReconnect {
     private static void updateStatus() {
         if (statusWidget == null) return;
         long seconds = Math.max(0, (deadline - System.currentTimeMillis() + 999) / 1000);
-        statusWidget.setMessage(Component.literal("Reconectando en " + seconds + " segundos · Intento " + attempt));
+        statusWidget.setMessage(Component.literal("Reconectando en " + formatDelay(seconds) + " · Intento " + attempt));
     }
 
-    private static AfkFarmConfig.Snapshot config() {
-        Minecraft minecraft = Minecraft.getInstance();
-        return AfkFarmConfig.get(minecraft.gameDirectory.toPath()).snapshot();
+    private static String formatDelay(long seconds) {
+        return seconds >= 60 ? String.format(java.util.Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60)
+                : seconds + " segundos";
     }
+
 }

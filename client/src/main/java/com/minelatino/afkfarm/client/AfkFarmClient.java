@@ -2,6 +2,7 @@ package com.minelatino.afkfarm.client;
 
 import com.minelatino.afkfarm.AfkFarmConfig;
 import com.minelatino.afkfarm.AfkFarmAttackPolicy;
+import com.minelatino.afkfarm.AfkRecoveryPolicy;
 import com.minelatino.afkfarm.RecordedRouteNavigator;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -31,10 +32,12 @@ public final class AfkFarmClient {
     private static final int ROUTE_ABORT_TICKS = 120;
     private static final int JUMP_PULSE_TICKS = 2;
     private static final int JUMP_COOLDOWN_TICKS = 18;
+    private static final double FARM_ANCHOR_RADIUS = 24.0;
+    private static final int RELOCATION_CONFIRM_TICKS = 60;
     private static final String AUTHORIZED_SERVER = "play.minelatino.com";
     private static final AfkFarmClient INSTANCE = new AfkFarmClient();
 
-    private enum State { IDLE, WAITING_WORLD, WAITING_COMMAND, WAITING_MOVEMENT, MOVING, ATTACKING, COMPLETE }
+    private enum State { IDLE, WAITING_WORLD, WAITING_RECOVERY, WAITING_COMMAND, WAITING_MOVEMENT, MOVING, ATTACKING, COMPLETE }
 
     private State state = State.IDLE;
     private boolean active;
@@ -62,6 +65,14 @@ public final class AfkFarmClient {
     private long routeProgressTick;
     private int jumpPulseTicks;
     private int jumpCooldownTicks;
+    private AfkFarmConfig.FarmMode activeMode = AfkFarmConfig.FarmMode.DIRECT;
+    private boolean recoveryPending;
+    private boolean disconnectedRecovery;
+    private boolean anchorSet;
+    private double anchorX;
+    private double anchorY;
+    private double anchorZ;
+    private int outsideAnchorTicks;
     private String status = "";
 
     public static AfkFarmClient instance() { return INSTANCE; }
@@ -69,6 +80,7 @@ public final class AfkFarmClient {
     public boolean recording() { return recording; }
     public int recordedPointCount() { return recordedPoints.size(); }
     public String status() { return status; }
+    public AfkFarmConfig.FarmMode activeMode() { return activeMode; }
 
     /** Opening the assistant always leaves automation stopped until the user starts it again. */
     public void pauseForAssistant() {
@@ -81,17 +93,30 @@ public final class AfkFarmClient {
     }
 
     public void start() {
+        AfkFarmConfig.Snapshot config = config();
+        boolean hasTargets = config.attackArtificialPlayers()
+                || config.attackHostileMobs() && !config.allowedHostileMobs().isEmpty()
+                || config.attackAnimals() && !config.allowedAnimals().isEmpty();
+        if (!hasTargets) {
+            status = "Selecciona al menos un mob antes de iniciar AFK Farm";
+            return;
+        }
         status = "Validando tiempo de uso AFK Farm";
         AfkUsageController.instance().start(this::startAuthorized, message -> status = message);
     }
 
     private void startAuthorized() {
+        activeMode = config().mode();
         if (recording) stopRecording();
         BackgroundPerformanceController.activate();
         active = true;
         state = State.WAITING_WORLD;
         sequenceStarted = false;
         suspendedState = null;
+        recoveryPending = false;
+        disconnectedRecovery = false;
+        anchorSet = false;
+        outsideAnchorTicks = 0;
         readyTicks = 0;
         clearLockedTarget();
         observedLevel = Minecraft.getInstance().level;
@@ -135,9 +160,34 @@ public final class AfkFarmClient {
         state = State.IDLE;
         sequenceStarted = false;
         suspendedState = null;
+        recoveryPending = false;
+        disconnectedRecovery = false;
+        anchorSet = false;
+        outsideAnchorTicks = 0;
         clearLockedTarget();
         artificialPlayers.clearNearbyPlayers();
         status = reason == null ? "" : reason;
+    }
+
+    /** Called by the disconnect screen. A negative value means no automatic reconnect. */
+    public int onDisconnected() {
+        if (!active) return -1;
+        AfkFarmConfig.Snapshot config = config();
+        int delay = AfkRecoveryPolicy.reconnectDelaySeconds(activeMode, config.autoReconnect());
+        if (delay < 0) {
+            cancel(activeMode == AfkFarmConfig.FarmMode.DIRECT
+                    ? "AFK Directo detenido por desconexión"
+                    : "Reconexión automática desactivada");
+            return -1;
+        }
+        releaseControls();
+        clearLockedTarget();
+        recoveryPending = true;
+        disconnectedRecovery = true;
+        suspendedState = null;
+        state = State.WAITING_WORLD;
+        status = "Desconexión detectada · reconectando en " + delay + " segundos";
+        return delay;
     }
 
     public void tick() {
@@ -162,7 +212,9 @@ public final class AfkFarmClient {
 
         if (minecraft.level != observedLevel) {
             clearLockedTarget();
-            if (active && sequenceStarted && state != State.WAITING_WORLD) suspendForTransfer();
+            if (active && sequenceStarted && state == State.ATTACKING) handleUnexpectedTransfer();
+            else if (active && sequenceStarted && state != State.WAITING_WORLD
+                    && state != State.WAITING_RECOVERY) suspendForTransfer();
             observedLevel = minecraft.level;
             readyTicks = 0;
             transferScreenGrace = TRANSFER_SCREEN_GRACE_TICKS;
@@ -172,9 +224,12 @@ public final class AfkFarmClient {
             readyTicks = 0;
             releaseControls();
             if (active) {
-                if (sequenceStarted && state != State.WAITING_WORLD) suspendForTransfer();
-                state = State.WAITING_WORLD;
-                status = "Cambio de host detectado · esperando el nuevo mundo";
+                if (sequenceStarted && state != State.WAITING_WORLD
+                        && state != State.WAITING_RECOVERY) suspendForTransfer();
+                if (state != State.WAITING_RECOVERY) {
+                    state = State.WAITING_WORLD;
+                    status = "Cambio de host detectado · esperando el nuevo mundo";
+                }
             }
             return;
         }
@@ -183,8 +238,9 @@ public final class AfkFarmClient {
         if (readyTicks == WORLD_READY_TICKS) {
             AutoReconnect.connected();
             if (active && state == State.WAITING_WORLD) {
-                if (suspendedState != null) resumeAfterTransfer();
-                else beginSequence();
+                if (recoveryPending && disconnectedRecovery) beginSequence();
+                else if (suspendedState != null) resumeAfterTransfer();
+                else beginInitialFarm(minecraft);
             }
         }
         if (!active || readyTicks < WORLD_READY_TICKS) return;
@@ -202,12 +258,48 @@ public final class AfkFarmClient {
         }
 
         switch (state) {
+            case WAITING_RECOVERY -> tickRecoveryWait();
             case WAITING_COMMAND -> tickCommands(minecraft);
             case WAITING_MOVEMENT -> tickMovementDelay();
             case MOVING -> tickMovement(minecraft);
             case ATTACKING -> tickAttack(minecraft);
             default -> {}
         }
+    }
+
+    private void beginInitialFarm(Minecraft minecraft) {
+        sequenceStarted = true;
+        setFarmAnchor(minecraft);
+        beginAttackOrComplete(config());
+    }
+
+    private void handleUnexpectedTransfer() {
+        if (!AfkRecoveryPolicy.recoversUnexpectedTransfer(activeMode)) {
+            cancel(activeMode == AfkFarmConfig.FarmMode.DIRECT
+                    ? "AFK Directo detenido por cambio de mundo o host"
+                    : "AFK Reconexión detenido por cambio de mundo o host");
+            return;
+        }
+        beginAutonomousRecovery("Cambio inesperado de mundo o host");
+    }
+
+    private void beginAutonomousRecovery(String reason) {
+        releaseControls();
+        clearLockedTarget();
+        recoveryPending = true;
+        disconnectedRecovery = false;
+        suspendedState = null;
+        state = State.WAITING_RECOVERY;
+        deadline = ticks + seconds(config().recoveryWaitSeconds());
+        status = reason + " · recuperación en " + remainingSeconds() + " segundos";
+    }
+
+    private void tickRecoveryWait() {
+        if (ticks < deadline) {
+            status = "Reinicio de host detectado · recuperación en " + remainingSeconds() + " segundos";
+            return;
+        }
+        beginSequence();
     }
 
     private void beginSequence() {
@@ -345,6 +437,13 @@ public final class AfkFarmClient {
             complete("Ataque bloqueado: servidor no autorizado");
             return;
         }
+        if (recoveryPending && anchorSet && !nearFarmAnchor(Minecraft.getInstance())) {
+            cancel("No se pudo confirmar el regreso a la zona de farmeo");
+            return;
+        }
+        recoveryPending = false;
+        disconnectedRecovery = false;
+        setFarmAnchor(Minecraft.getInstance());
         state = State.ATTACKING;
         status = "Buscando objetivos permitidos";
     }
@@ -355,6 +454,7 @@ public final class AfkFarmClient {
             complete("Ataque automático detenido");
             return;
         }
+        if (tickUnexpectedRelocation(minecraft)) return;
         LivingEntity target = nearestTarget(minecraft, config);
         if (target == null) {
             status = targetDiagnostic(minecraft, config);
@@ -385,6 +485,42 @@ public final class AfkFarmClient {
         minecraft.player.swing(InteractionHand.MAIN_HAND);
         lastAttackTick = ticks;
         status = "Atacando " + targetName;
+    }
+
+    private boolean tickUnexpectedRelocation(Minecraft minecraft) {
+        if (!anchorSet || minecraft.player == null) return false;
+        double dx = minecraft.player.getX() - anchorX;
+        double dy = minecraft.player.getY() - anchorY;
+        double dz = minecraft.player.getZ() - anchorZ;
+        if (dx * dx + dy * dy + dz * dz <= FARM_ANCHOR_RADIUS * FARM_ANCHOR_RADIUS) {
+            outsideAnchorTicks = 0;
+            return false;
+        }
+        if (++outsideAnchorTicks < RELOCATION_CONFIRM_TICKS) return false;
+        outsideAnchorTicks = 0;
+        if (activeMode == AfkFarmConfig.FarmMode.AUTONOMOUS)
+            beginAutonomousRecovery("Traslado fuera de la zona de farmeo");
+        else cancel(activeMode == AfkFarmConfig.FarmMode.DIRECT
+                ? "AFK Directo detenido por cambio de ubicación"
+                : "AFK Reconexión detenido por cambio de ubicación");
+        return true;
+    }
+
+    private void setFarmAnchor(Minecraft minecraft) {
+        if (minecraft.player == null) return;
+        anchorX = minecraft.player.getX();
+        anchorY = minecraft.player.getY();
+        anchorZ = minecraft.player.getZ();
+        anchorSet = true;
+        outsideAnchorTicks = 0;
+    }
+
+    private boolean nearFarmAnchor(Minecraft minecraft) {
+        if (minecraft.player == null) return false;
+        double dx = minecraft.player.getX() - anchorX;
+        double dy = minecraft.player.getY() - anchorY;
+        double dz = minecraft.player.getZ() - anchorZ;
+        return dx * dx + dy * dy + dz * dz <= FARM_ANCHOR_RADIUS * FARM_ANCHOR_RADIUS;
     }
 
     private LivingEntity nearestTarget(Minecraft minecraft, AfkFarmConfig.Snapshot config) {

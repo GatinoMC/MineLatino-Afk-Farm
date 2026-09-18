@@ -12,7 +12,7 @@ import net.minecraft.network.chat.Component;
 
 /** Compact tabbed configuration screen with recorded routes and explicit target selection. */
 public final class AfkFarmScreen extends Screen {
-    private enum Tab { GENERAL, COMMANDS, MOVEMENT, ATTACK }
+    private enum Tab { MODES, GENERAL, COMMANDS, MOVEMENT, ATTACK }
     private record LabeledField(String label, EditBox box) {}
 
     private final Screen parent;
@@ -24,7 +24,7 @@ public final class AfkFarmScreen extends Screen {
     private int generalActionsY;
     private int attackInfoY;
 
-    public AfkFarmScreen(Screen parent) { this(parent, Tab.GENERAL); }
+    public AfkFarmScreen(Screen parent) { this(parent, Tab.MODES); }
     private AfkFarmScreen(Screen parent, Tab tab) {
         super(Component.literal("MineLatino AFK Farm"));
         this.parent = parent;
@@ -35,39 +35,62 @@ public final class AfkFarmScreen extends Screen {
         fields.clear();
         int panelWidth = Math.min(430, Math.max(250, width - 20));
         int left = (width - panelWidth) / 2;
-        int tabWidth = (panelWidth - 9) / 4;
-        for (int i = 0; i < Tab.values().length; i++) {
-            Tab value = Tab.values()[i];
-            Button button = addRenderableWidget(Button.builder(Component.literal(tabName(value)), ignored -> switchTab(value))
-                    .bounds(left + i * (tabWidth + 3), 24, tabWidth, 20).build());
-            button.active = value != tab;
+        if (tab == Tab.MODES) {
+            initModes(left, panelWidth);
+        } else {
+            Tab[] tabs = config().snapshot().mode() == AfkFarmConfig.FarmMode.DIRECT
+                    ? new Tab[] { Tab.GENERAL, Tab.ATTACK }
+                    : new Tab[] { Tab.GENERAL, Tab.COMMANDS, Tab.MOVEMENT, Tab.ATTACK };
+            int tabWidth = (panelWidth - (tabs.length - 1) * 3) / tabs.length;
+            for (int i = 0; i < tabs.length; i++) {
+                Tab value = tabs[i];
+                Button button = addRenderableWidget(Button.builder(Component.literal(tabName(value)), ignored -> switchTab(value))
+                        .bounds(left + i * (tabWidth + 3), 24, tabWidth, 20).build());
+                button.active = value != tab;
+            }
+            switch (tab) {
+                case GENERAL -> initGeneral(left, panelWidth);
+                case COMMANDS -> initCommands(left, panelWidth);
+                case MOVEMENT -> initMovement(left, panelWidth);
+                case ATTACK -> initAttack(left, panelWidth);
+                default -> {}
+            }
         }
-        switch (tab) {
-            case GENERAL -> initGeneral(left, panelWidth);
-            case COMMANDS -> initCommands(left, panelWidth);
-            case MOVEMENT -> initMovement(left, panelWidth);
-            case ATTACK -> initAttack(left, panelWidth);
-        }
-        addRenderableWidget(Button.builder(Component.literal("Volver"), button -> onClose())
+        addRenderableWidget(Button.builder(Component.literal(tab == Tab.MODES ? "Volver" : "Cambiar modo"), button -> onClose())
                 .bounds(left, height - 27, panelWidth, 20).build());
+    }
+
+    private void initModes(int left, int width) {
+        AfkUsageController.instance().refresh();
+        AfkFarmConfig.FarmMode selected = config().snapshot().mode();
+        int y = height < 300 ? 48 : 58;
+        for (AfkFarmConfig.FarmMode mode : AfkFarmConfig.FarmMode.values()) {
+            String label = (mode == selected ? "✓ " : "") + mode.displayName() + " · Configurar";
+            addRenderableWidget(Button.builder(Component.literal(trim(label, width)), button -> selectMode(mode))
+                    .bounds(left, y, width, 20).build());
+            y += height < 300 ? 45 : 52;
+        }
+    }
+
+    private void selectMode(AfkFarmConfig.FarmMode mode) {
+        config().setMode(mode);
+        minecraft.gui.setScreen(new AfkFarmScreen(parent, Tab.GENERAL));
     }
 
     private void initGeneral(int left, int width) {
         AfkUsageController.instance().refresh();
         AfkFarmConfig config = config();
         var value = config.snapshot();
-        int y = 55;
-        addToggle(left, y, width, "Reconexión automática", value.autoReconnect(), config::setAutoReconnect); y += 24;
-        addToggle(left, y, width, "Módulo de comandos", value.commandsEnabled(), config::setCommandsEnabled); y += 24;
-        addToggle(left, y, width, "Módulo de recorrido", value.navigationEnabled(), config::setNavigationEnabled); y += 24;
-        addToggle(left, y, width, "Módulo de ataque", value.autoAttackEnabled(), config::setAutoAttackEnabled); y += 29;
+        int y = 70;
+        if (value.mode() != AfkFarmConfig.FarmMode.DIRECT) {
+            addToggle(left, y, width, "Reconexión automática", value.autoReconnect(), config::setAutoReconnect);
+            y += 28;
+        }
         boolean active = AfkFarmClient.instance().active();
-        // The assistant belongs to the pause menu; this screen is exclusively
-        // for AFK Farm configuration and control.
-        generalActionsY = Math.min(y, height - 76);
-        flowButton = addRenderableWidget(Button.builder(Component.literal(active ? "Detener flujo AFK" : "Iniciar flujo AFK"), button -> {
+        generalActionsY = Math.min(y + 22, height - 76);
+        flowButton = addRenderableWidget(Button.builder(Component.literal(active ? "Detener AFK" : value.mode().startLabel()), button -> {
             saveFields();
-            if (active) AfkFarmClient.instance().cancel("Flujo cancelado por el usuario");
+            if (active) AfkFarmClient.instance().cancel("AFK cancelado por el usuario");
             else AfkFarmClient.instance().start();
             minecraft.gui.setScreen(null);
         }).bounds(left, generalActionsY, width, 20).build());
@@ -93,10 +116,17 @@ public final class AfkFarmScreen extends Screen {
         rotation = field(left + half + 4, y, width - half - 4, "Giro máximo (0.5–30°)", number(value.maxCameraRotationDegreesPerTick()), 12);
         y += compact ? 34 : 39;
         var activeRoute = value.routes().stream().filter(route -> route.name().equals(value.activeRoute())).findFirst().orElse(null);
-        String routeLabel = activeRoute == null ? "Sin recorrido seleccionado" : activeRoute.name() + " · " + activeRoute.points().size() + " puntos";
-        Button current = addRenderableWidget(Button.builder(Component.literal(trim(routeLabel, width)), button -> {})
+        String routeLabel = activeRoute == null ? "Sin recorrido · pulsar para seleccionar"
+                : activeRoute.name() + " · " + activeRoute.points().size() + " puntos · pulsar para desactivar";
+        Button current = addRenderableWidget(Button.builder(Component.literal(trim(routeLabel, width)), button -> {
+            var snapshot = config().snapshot();
+            if (snapshot.activeRoute().isBlank() && !snapshot.routes().isEmpty())
+                config().selectRoute(snapshot.routes().getFirst().name());
+            else config().selectRoute("");
+            minecraft.gui.setScreen(new AfkFarmScreen(parent, Tab.MOVEMENT));
+        })
                 .bounds(left, y, width, 20).build());
-        current.active = false;
+        current.active = !value.routes().isEmpty();
         y += compact ? 23 : 24;
         routeName = field(left, y, width, "Nombre del nuevo recorrido", "Recorrido", 48); y += compact ? 34 : 37;
         boolean recording = AfkFarmClient.instance().recording();
@@ -204,17 +234,36 @@ public final class AfkFarmScreen extends Screen {
         for (LabeledField value : fields)
             graphics.text(font, value.label(), value.box().getX(), value.box().getY() - 9, 0xFFB7C3CC, false);
         super.extractRenderState(graphics, mouseX, mouseY, delta);
-        if (tab == Tab.GENERAL)
+        if (tab == Tab.MODES) {
+            int y = height < 300 ? 71 : 81;
+            int gap = height < 300 ? 45 : 52;
+            graphics.centeredText(font, "Farmea donde estás; cualquier interrupción lo detiene.", width / 2, y, 0xFF8E9AA5);
+            graphics.centeredText(font, "Reconecta y repite comandos, recorrido y mobs.", width / 2, y + gap, 0xFF8E9AA5);
+            graphics.centeredText(font, "También recupera reinicios de host después de 5 minutos.", width / 2, y + gap * 2, 0xFF8E9AA5);
+            drawBalance(graphics, Math.min(height - 43, y + gap * 2 + 23));
+        }
+        else if (tab == Tab.GENERAL)
         {
             AfkUsageController usage = AfkUsageController.instance();
-            long seconds = usage.remainingSeconds();
-            if (flowButton != null && !AfkFarmClient.instance().active()) flowButton.active = usage.canStart();
-            String balance = seconds < 0 ? usage.message() : "Tiempo AFK disponible: " + formatDuration(seconds);
-            int color = seconds == 0 ? 0xFFFF7676 : seconds < 0 ? 0xFFFFC857 : 0xFF62E8C6;
+            var snapshot = config().snapshot();
+            AfkFarmConfig.FarmMode mode = snapshot.mode();
+            if (flowButton != null && !AfkFarmClient.instance().active()) {
+                boolean hasTargets = hasTargets(snapshot);
+                flowButton.active = usage.canStart() && hasTargets;
+                flowButton.setMessage(Component.literal(!hasTargets ? "Selecciona al menos un mob"
+                        : usage.remainingSeconds() == 0 ? "Sin horas AFK disponibles" : mode.startLabel()));
+            }
+            String explanation = switch (mode) {
+                case DIRECT -> "Se detiene al desconectarse o cambiar de host/ubicación.";
+                case RECONNECT -> "Una desconexión repite comandos, recorrido y ataque.";
+                case AUTONOMOUS -> "Desconexiones y reinicios esperan 5 minutos antes de volver.";
+            };
+            graphics.centeredText(font, mode.displayName(), width / 2, 52, 0xFFA8F3FF);
+            graphics.centeredText(font, explanation, width / 2, 62, 0xFF8E9AA5);
             int balanceY = Math.min(height - 49, generalActionsY + 26);
-            graphics.centeredText(font, balance, width / 2, balanceY, color);
-            if (balanceY + 12 < height - 28)
-                graphics.centeredText(font, "Los módulos y recorridos se guardan por separado.", width / 2, balanceY + 12, 0xFF8E9AA5);
+            drawBalance(graphics, balanceY);
+            if (balanceY + 12 < height - 28) graphics.centeredText(font,
+                    "El saldo es único y obligatorio para los tres modos.", width / 2, balanceY + 12, 0xFF8E9AA5);
         }
         else if (tab == Tab.ATTACK && attackInfoY + 10 < height - 28) {
             graphics.centeredText(font, "Detección conservadora · nombres y skins no se utilizan", width / 2,
@@ -224,7 +273,18 @@ public final class AfkFarmScreen extends Screen {
         }
     }
 
-    @Override public void onClose() { saveFields(); minecraft.gui.setScreen(parent); }
+    private void drawBalance(GuiGraphicsExtractor graphics, int y) {
+        AfkUsageController usage = AfkUsageController.instance();
+        long seconds = usage.remainingSeconds();
+        String balance = seconds < 0 ? usage.message() : "Tiempo AFK disponible: " + formatDuration(seconds);
+        int color = seconds == 0 ? 0xFFFF7676 : seconds < 0 ? 0xFFFFC857 : 0xFF62E8C6;
+        graphics.centeredText(font, balance, width / 2, y, color);
+    }
+
+    @Override public void onClose() {
+        saveFields();
+        minecraft.gui.setScreen(tab == Tab.MODES ? parent : new AfkFarmScreen(parent, Tab.MODES));
+    }
     @Override public boolean isPauseScreen() { return false; }
 
     private AfkFarmConfig config() { return AfkFarmConfig.get(minecraft.gameDirectory.toPath()); }
@@ -233,6 +293,11 @@ public final class AfkFarmScreen extends Screen {
     private static double decimal(EditBox box, double fallback) { try { return Double.parseDouble(box.getValue().trim().replace(',', '.')); } catch (Exception ignored) { return fallback; } }
     private static String number(double value) { return value == Math.rint(value) ? Long.toString(Math.round(value)) : Double.toString(value); }
     private static String toggleLabel(String label, boolean enabled) { return label + ": " + (enabled ? "Activado" : "Desactivado"); }
+    private static boolean hasTargets(AfkFarmConfig.Snapshot value) {
+        return value.attackArtificialPlayers()
+                || value.attackHostileMobs() && !value.allowedHostileMobs().isEmpty()
+                || value.attackAnimals() && !value.allowedAnimals().isEmpty();
+    }
     private static String formatDuration(long total) {
         long days = total / 86400, hours = total % 86400 / 3600, minutes = total % 3600 / 60, seconds = total % 60;
         if (days > 0) return days + "d " + hours + "h " + minutes + "m";
@@ -240,5 +305,5 @@ public final class AfkFarmScreen extends Screen {
         return minutes + "m " + seconds + "s";
     }
     private String trim(String value, int width) { return font.plainSubstrByWidth(value, Math.max(30, width - 12)); }
-    private static String tabName(Tab tab) { return switch (tab) { case GENERAL -> "General"; case COMMANDS -> "Tiempos"; case MOVEMENT -> "Recorrido"; case ATTACK -> "Ataque"; }; }
+    private static String tabName(Tab tab) { return switch (tab) { case MODES -> "Modos"; case GENERAL -> "Inicio"; case COMMANDS -> "Comandos"; case MOVEMENT -> "Recorrido"; case ATTACK -> "Mobs"; }; }
 }

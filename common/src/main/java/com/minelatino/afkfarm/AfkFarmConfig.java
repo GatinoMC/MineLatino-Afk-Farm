@@ -11,37 +11,83 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-/** Local settings for the AFK workflow. Nothing in this file controls attack frequency. */
+/** Local settings for the three AFK modes. Nothing here controls attack frequency. */
 public final class AfkFarmConfig {
     public static final int MAX_COMMANDS = 10;
     public static final int MAX_ALLOWED_ENTITIES = 64;
     public static final int MAX_ROUTES = 20;
     public static final int MAX_ROUTE_POINTS = 8192;
+    public static final int AUTONOMOUS_RECOVERY_SECONDS = 300;
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static AfkFarmConfig current;
 
-    private static final class Data {
-        int version = 4;
-        boolean autoReconnect = false;
-        boolean commandsEnabled = false;
+    public enum FarmMode {
+        DIRECT("AFK Directo", "Iniciar AFK Directo"),
+        RECONNECT("AFK Reconexión", "Iniciar AFK Reconexión"),
+        AUTONOMOUS("AFK Autónomo", "Iniciar AFK Autónomo");
+
+        private final String displayName;
+        private final String startLabel;
+
+        FarmMode(String displayName, String startLabel) {
+            this.displayName = displayName;
+            this.startLabel = startLabel;
+        }
+
+        public String displayName() { return displayName; }
+        public String startLabel() { return startLabel; }
+    }
+
+    private static final class ModeData {
+        boolean autoReconnect;
+        boolean commandsEnabled;
         List<String> commands = new ArrayList<>();
         int postJoinDelaySeconds = 10;
         int betweenCommandsDelaySeconds = 3;
         int movementStartDelaySeconds = 10;
-        double targetX = 0;
+        double targetX;
         double targetY = 64;
-        double targetZ = 0;
+        double targetZ;
         double arrivalRadius = 1.5;
-        boolean navigationEnabled = false;
-        boolean autoAttackEnabled = false;
-        boolean attackHostileMobs = false;
-        boolean attackAnimals = false;
-        boolean attackArtificialPlayers = false;
+        boolean navigationEnabled;
+        boolean autoAttackEnabled;
+        boolean attackHostileMobs;
+        boolean attackAnimals;
+        boolean attackArtificialPlayers;
         List<String> allowedHostileMobs = new ArrayList<>();
         List<String> allowedAnimals = new ArrayList<>();
         double maxCameraRotationDegreesPerTick = 8.0;
         String activeRoute = "";
+    }
+
+    private static final class Data {
+        int version = 5;
+        FarmMode selectedMode = FarmMode.DIRECT;
+        ModeData directProfile = new ModeData();
+        ModeData reconnectProfile = reconnectProfile();
+        ModeData autonomousProfile = reconnectProfile();
         List<SavedRoute> routes = new ArrayList<>();
+
+        // Version 4 fields retained only so an existing JSON can be migrated losslessly.
+        boolean autoReconnect;
+        boolean commandsEnabled;
+        List<String> commands = new ArrayList<>();
+        int postJoinDelaySeconds = 10;
+        int betweenCommandsDelaySeconds = 3;
+        int movementStartDelaySeconds = 10;
+        double targetX;
+        double targetY = 64;
+        double targetZ;
+        double arrivalRadius = 1.5;
+        boolean navigationEnabled;
+        boolean autoAttackEnabled;
+        boolean attackHostileMobs;
+        boolean attackAnimals;
+        boolean attackArtificialPlayers;
+        List<String> allowedHostileMobs = new ArrayList<>();
+        List<String> allowedAnimals = new ArrayList<>();
+        double maxCameraRotationDegreesPerTick = 8.0;
+        String activeRoute = "";
     }
 
     public record RoutePoint(double x, double y, double z) {}
@@ -67,7 +113,9 @@ public final class AfkFarmConfig {
             List<String> allowedAnimals,
             double maxCameraRotationDegreesPerTick,
             String activeRoute,
-            List<SavedRoute> routes) {}
+            List<SavedRoute> routes,
+            FarmMode mode,
+            int recoveryWaitSeconds) {}
 
     private final Path path;
     private Data data;
@@ -92,47 +140,73 @@ public final class AfkFarmConfig {
     }
 
     public synchronized Snapshot snapshot() {
-        return new Snapshot(data.autoReconnect, data.commandsEnabled, List.copyOf(data.commands),
-                data.postJoinDelaySeconds, data.betweenCommandsDelaySeconds, data.movementStartDelaySeconds,
-                data.targetX, data.targetY, data.targetZ, data.arrivalRadius, data.navigationEnabled,
-                data.autoAttackEnabled, data.attackHostileMobs, data.attackAnimals, data.attackArtificialPlayers,
-                List.copyOf(data.allowedHostileMobs), List.copyOf(data.allowedAnimals),
-                data.maxCameraRotationDegreesPerTick, data.activeRoute,
-                data.routes.stream().map(route -> new SavedRoute(route.name(), List.copyOf(route.points()))).toList());
+        ModeData profile = selectedProfile();
+        return new Snapshot(profile.autoReconnect, profile.commandsEnabled, List.copyOf(profile.commands),
+                profile.postJoinDelaySeconds, profile.betweenCommandsDelaySeconds, profile.movementStartDelaySeconds,
+                profile.targetX, profile.targetY, profile.targetZ, profile.arrivalRadius, profile.navigationEnabled,
+                profile.autoAttackEnabled, profile.attackHostileMobs, profile.attackAnimals,
+                profile.attackArtificialPlayers, List.copyOf(profile.allowedHostileMobs),
+                List.copyOf(profile.allowedAnimals), profile.maxCameraRotationDegreesPerTick, profile.activeRoute,
+                data.routes.stream().map(route -> new SavedRoute(route.name(), List.copyOf(route.points()))).toList(),
+                data.selectedMode, AUTONOMOUS_RECOVERY_SECONDS);
     }
 
-    public synchronized void setAutoReconnect(boolean value) { data.autoReconnect = value; save(); }
-    public synchronized void setCommandsEnabled(boolean value) { data.commandsEnabled = value; save(); }
-    public synchronized void setNavigationEnabled(boolean value) { data.navigationEnabled = value; save(); }
-    public synchronized void setAutoAttackEnabled(boolean value) { data.autoAttackEnabled = value; save(); }
-    public synchronized void setAttackHostileMobs(boolean value) { data.attackHostileMobs = value; save(); }
-    public synchronized void setAttackAnimals(boolean value) { data.attackAnimals = value; save(); }
-    public synchronized void setAttackArtificialPlayers(boolean value) { data.attackArtificialPlayers = value; save(); }
+    public synchronized void setMode(FarmMode mode) {
+        data.selectedMode = mode == null ? FarmMode.DIRECT : mode;
+        selectedProfile().autoAttackEnabled = true;
+        save();
+    }
+
+    public synchronized void setAutoReconnect(boolean value) { selectedProfile().autoReconnect = value; save(); }
+    public synchronized void setCommandsEnabled(boolean value) { selectedProfile().commandsEnabled = value; save(); }
+    public synchronized void setNavigationEnabled(boolean value) { selectedProfile().navigationEnabled = value; save(); }
+    public synchronized void setAutoAttackEnabled(boolean value) { selectedProfile().autoAttackEnabled = value; save(); }
+    public synchronized void setAttackHostileMobs(boolean value) {
+        selectedProfile().attackHostileMobs = value;
+        selectedProfile().autoAttackEnabled = true;
+        save();
+    }
+    public synchronized void setAttackAnimals(boolean value) {
+        selectedProfile().attackAnimals = value;
+        selectedProfile().autoAttackEnabled = true;
+        save();
+    }
+    public synchronized void setAttackArtificialPlayers(boolean value) {
+        selectedProfile().attackArtificialPlayers = value;
+        selectedProfile().autoAttackEnabled = true;
+        save();
+    }
 
     public synchronized void setCommands(List<String> commands) {
-        data.commands = sanitizeCommands(commands);
+        ModeData profile = selectedProfile();
+        profile.commands = sanitizeCommands(commands);
+        profile.commandsEnabled = !profile.commands.isEmpty();
         save();
     }
 
     public synchronized void setDelays(int postJoin, int between, int movement) {
-        data.postJoinDelaySeconds = clamp(postJoin, 0, 300);
-        data.betweenCommandsDelaySeconds = clamp(between, 0, 60);
-        data.movementStartDelaySeconds = clamp(movement, 0, 300);
+        ModeData profile = selectedProfile();
+        profile.postJoinDelaySeconds = clamp(postJoin, 0, 300);
+        profile.betweenCommandsDelaySeconds = clamp(between, 0, 60);
+        profile.movementStartDelaySeconds = clamp(movement, 0, 300);
         save();
     }
 
     public synchronized void setNavigation(double x, double y, double z, double radius, double rotation) {
-        data.targetX = finite(x, 0);
-        data.targetY = finite(y, 64);
-        data.targetZ = finite(z, 0);
-        data.arrivalRadius = clamp(finite(radius, 1.5), 0.25, 32);
-        data.maxCameraRotationDegreesPerTick = clamp(finite(rotation, 8), 0.5, 30);
+        ModeData profile = selectedProfile();
+        profile.targetX = finite(x, 0);
+        profile.targetY = finite(y, 64);
+        profile.targetZ = finite(z, 0);
+        profile.arrivalRadius = clamp(finite(radius, 1.5), 0.25, 32);
+        profile.maxCameraRotationDegreesPerTick = clamp(finite(rotation, 8), 0.5, 30);
         save();
     }
 
     public synchronized void setAllowedEntities(List<String> hostile, List<String> animals) {
-        data.allowedHostileMobs = sanitizeIds(hostile);
-        data.allowedAnimals = sanitizeIds(animals);
+        ModeData profile = selectedProfile();
+        profile.allowedHostileMobs = sanitizeIds(hostile);
+        profile.allowedAnimals = sanitizeIds(animals);
+        profile.autoAttackEnabled = true;
         save();
     }
 
@@ -143,20 +217,29 @@ public final class AfkFarmConfig {
         Map<String, SavedRoute> routes = new LinkedHashMap<>();
         for (SavedRoute route : data.routes) routes.put(route.name(), route);
         routes.put(safeName, new SavedRoute(safeName, safePoints));
-        data.routes = routes.values().stream().limit(MAX_ROUTES).collect(java.util.stream.Collectors.toCollection(ArrayList::new));
-        data.activeRoute = safeName;
+        data.routes = routes.values().stream().limit(MAX_ROUTES)
+                .collect(java.util.stream.Collectors.toCollection(ArrayList::new));
+        selectedProfile().activeRoute = safeName;
+        selectedProfile().navigationEnabled = true;
         save();
     }
 
     public synchronized void selectRoute(String name) {
         String safeName = name == null ? "" : name.trim();
-        data.activeRoute = data.routes.stream().anyMatch(route -> route.name().equals(safeName)) ? safeName : "";
+        ModeData profile = selectedProfile();
+        profile.activeRoute = data.routes.stream().anyMatch(route -> route.name().equals(safeName)) ? safeName : "";
+        profile.navigationEnabled = !profile.activeRoute.isBlank();
         save();
     }
 
     public synchronized void deleteRoute(String name) {
         data.routes.removeIf(route -> route.name().equals(name));
-        if (data.activeRoute.equals(name)) data.activeRoute = data.routes.isEmpty() ? "" : data.routes.getFirst().name();
+        for (ModeData profile : profiles()) {
+            if (profile.activeRoute.equals(name)) {
+                profile.activeRoute = data.routes.isEmpty() ? "" : data.routes.getFirst().name();
+                profile.navigationEnabled = !profile.activeRoute.isBlank();
+            }
+        }
         save();
     }
 
@@ -173,14 +256,98 @@ public final class AfkFarmConfig {
         } catch (Exception ignored) {}
     }
 
+    private ModeData selectedProfile() {
+        return switch (data.selectedMode) {
+            case DIRECT -> data.directProfile;
+            case RECONNECT -> data.reconnectProfile;
+            case AUTONOMOUS -> data.autonomousProfile;
+        };
+    }
+
+    private List<ModeData> profiles() {
+        return List.of(data.directProfile, data.reconnectProfile, data.autonomousProfile);
+    }
+
     private static Data normalize(Data value) {
-        // alpha.7 introduced the conservative disguise detector behind a new
-        // disabled flag. Existing farms therefore detected the entity but
-        // silently refused to attack it. Migrate only profiles that had already
-        // opted into both automatic and hostile-mob attacks.
-        if (value.version < 4 && value.autoAttackEnabled && value.attackHostileMobs)
+        int sourceVersion = value.version;
+        if (sourceVersion < 4 && value.autoAttackEnabled && value.attackHostileMobs)
             value.attackArtificialPlayers = true;
-        value.version = 4;
+        value.routes = sanitizeRoutes(value.routes);
+        if (sourceVersion < 5) {
+            ModeData migrated = legacyProfile(value);
+            value.directProfile = copyProfile(migrated);
+            value.reconnectProfile = copyProfile(migrated);
+            value.reconnectProfile.autoReconnect = true;
+            value.autonomousProfile = copyProfile(migrated);
+            value.autonomousProfile.autoReconnect = true;
+            value.selectedMode = value.autoReconnect ? FarmMode.RECONNECT : FarmMode.DIRECT;
+        }
+        value.version = 5;
+        if (value.selectedMode == null) value.selectedMode = FarmMode.DIRECT;
+        if (value.directProfile == null) value.directProfile = new ModeData();
+        if (value.reconnectProfile == null) value.reconnectProfile = reconnectProfile();
+        if (value.autonomousProfile == null) value.autonomousProfile = reconnectProfile();
+        normalizeProfile(value.directProfile, value.routes);
+        normalizeProfile(value.reconnectProfile, value.routes);
+        normalizeProfile(value.autonomousProfile, value.routes);
+        return value;
+    }
+
+    private static ModeData reconnectProfile() {
+        ModeData result = new ModeData();
+        result.autoReconnect = true;
+        return result;
+    }
+
+    private static ModeData legacyProfile(Data value) {
+        ModeData result = new ModeData();
+        result.autoReconnect = value.autoReconnect;
+        result.commandsEnabled = value.commandsEnabled;
+        result.commands = value.commands;
+        result.postJoinDelaySeconds = value.postJoinDelaySeconds;
+        result.betweenCommandsDelaySeconds = value.betweenCommandsDelaySeconds;
+        result.movementStartDelaySeconds = value.movementStartDelaySeconds;
+        result.targetX = value.targetX;
+        result.targetY = value.targetY;
+        result.targetZ = value.targetZ;
+        result.arrivalRadius = value.arrivalRadius;
+        result.navigationEnabled = value.navigationEnabled;
+        result.autoAttackEnabled = value.autoAttackEnabled;
+        result.attackHostileMobs = value.attackHostileMobs;
+        result.attackAnimals = value.attackAnimals;
+        result.attackArtificialPlayers = value.attackArtificialPlayers;
+        result.allowedHostileMobs = value.allowedHostileMobs;
+        result.allowedAnimals = value.allowedAnimals;
+        result.maxCameraRotationDegreesPerTick = value.maxCameraRotationDegreesPerTick;
+        result.activeRoute = value.activeRoute;
+        return result;
+    }
+
+    private static ModeData copyProfile(ModeData source) {
+        ModeData result = new ModeData();
+        result.autoReconnect = source.autoReconnect;
+        result.commandsEnabled = source.commandsEnabled;
+        result.commands = new ArrayList<>(source.commands == null ? List.of() : source.commands);
+        result.postJoinDelaySeconds = source.postJoinDelaySeconds;
+        result.betweenCommandsDelaySeconds = source.betweenCommandsDelaySeconds;
+        result.movementStartDelaySeconds = source.movementStartDelaySeconds;
+        result.targetX = source.targetX;
+        result.targetY = source.targetY;
+        result.targetZ = source.targetZ;
+        result.arrivalRadius = source.arrivalRadius;
+        result.navigationEnabled = source.navigationEnabled;
+        result.autoAttackEnabled = source.autoAttackEnabled;
+        result.attackHostileMobs = source.attackHostileMobs;
+        result.attackAnimals = source.attackAnimals;
+        result.attackArtificialPlayers = source.attackArtificialPlayers;
+        result.allowedHostileMobs = new ArrayList<>(source.allowedHostileMobs == null ? List.of() : source.allowedHostileMobs);
+        result.allowedAnimals = new ArrayList<>(source.allowedAnimals == null ? List.of() : source.allowedAnimals);
+        result.maxCameraRotationDegreesPerTick = source.maxCameraRotationDegreesPerTick;
+        result.activeRoute = source.activeRoute;
+        return result;
+    }
+
+    private static void normalizeProfile(ModeData value, List<SavedRoute> routes) {
         value.postJoinDelaySeconds = clamp(value.postJoinDelaySeconds, 0, 300);
         value.betweenCommandsDelaySeconds = clamp(value.betweenCommandsDelaySeconds, 0, 60);
         value.movementStartDelaySeconds = clamp(value.movementStartDelaySeconds, 0, 300);
@@ -192,10 +359,14 @@ public final class AfkFarmConfig {
         value.commands = sanitizeCommands(value.commands);
         value.allowedHostileMobs = sanitizeIds(value.allowedHostileMobs);
         value.allowedAnimals = sanitizeIds(value.allowedAnimals);
-        value.routes = sanitizeRoutes(value.routes);
-        if (value.activeRoute == null || value.routes.stream().noneMatch(route -> route.name().equals(value.activeRoute)))
-            value.activeRoute = value.routes.isEmpty() ? "" : value.routes.getFirst().name();
-        return value;
+        if (value.activeRoute == null) value.activeRoute = "";
+        if (!value.navigationEnabled) value.activeRoute = "";
+        else if (routes.stream().noneMatch(route -> route.name().equals(value.activeRoute))) {
+            value.activeRoute = routes.isEmpty() ? "" : routes.getFirst().name();
+            value.navigationEnabled = !value.activeRoute.isBlank();
+        }
+        if (value.commands.isEmpty()) value.commandsEnabled = false;
+        if (value.activeRoute.isBlank()) value.navigationEnabled = false;
     }
 
     private static ArrayList<SavedRoute> sanitizeRoutes(List<SavedRoute> values) {

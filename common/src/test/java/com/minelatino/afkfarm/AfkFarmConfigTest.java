@@ -33,6 +33,27 @@ final class AfkFarmConfigTest {
         assertTrue(config.snapshot().attackArtificialPlayers());
     }
 
+    @Test void keepsIndependentSettingsForEachFarmMode() {
+        var config = AfkFarmConfig.get(directory.resolve("modes"));
+        config.setMode(AfkFarmConfig.FarmMode.RECONNECT);
+        config.setCommands(List.of("/warp reconnect"));
+        config.setAllowedEntities(List.of("minecraft:zombie"), List.of());
+
+        config.setMode(AfkFarmConfig.FarmMode.AUTONOMOUS);
+        config.setCommands(List.of("/warp autonomous"));
+        config.setAllowedEntities(List.of("minecraft:skeleton"), List.of());
+        assertEquals(300, config.snapshot().recoveryWaitSeconds());
+
+        config.setMode(AfkFarmConfig.FarmMode.RECONNECT);
+        assertEquals(List.of("warp reconnect"), config.snapshot().commands());
+        assertEquals(List.of("minecraft:zombie"), config.snapshot().allowedHostileMobs());
+        assertTrue(config.snapshot().autoReconnect());
+        config.setAutoReconnect(false);
+        config.setMode(AfkFarmConfig.FarmMode.DIRECT);
+        config.setMode(AfkFarmConfig.FarmMode.RECONNECT);
+        assertFalse(config.snapshot().autoReconnect());
+    }
+
     @Test void migratesExistingHostileFarmsToAttackConfirmedDisguises() throws Exception {
         Path game = directory.resolve("migration");
         Path file = game.resolve("config/minelatino-afk-farm/afk-farm.json");
@@ -40,6 +61,19 @@ final class AfkFarmConfigTest {
         Files.writeString(file, "{\"version\":3,\"autoAttackEnabled\":true,\"attackHostileMobs\":true,"
                 + "\"attackArtificialPlayers\":false}");
         assertTrue(AfkFarmConfig.get(game).snapshot().attackArtificialPlayers());
+    }
+
+    @Test void migratesVersionFourSettingsIntoReconnectMode() throws Exception {
+        Path game = directory.resolve("mode-migration");
+        Path file = game.resolve("config/minelatino-afk-farm/afk-farm.json");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "{\"version\":4,\"autoReconnect\":true,\"commandsEnabled\":true,"
+                + "\"commands\":[\"warp granja\"],\"attackHostileMobs\":true,"
+                + "\"allowedHostileMobs\":[\"minecraft:zombie\"]}");
+        var value = AfkFarmConfig.get(game).snapshot();
+        assertEquals(AfkFarmConfig.FarmMode.RECONNECT, value.mode());
+        assertEquals(List.of("warp granja"), value.commands());
+        assertEquals(List.of("minecraft:zombie"), value.allowedHostileMobs());
     }
 
     @Test void clampsDelaysCommandsAndAttackLists() {
@@ -84,6 +118,22 @@ final class AfkFarmConfigTest {
         config.deleteRoute("Granja");
         assertEquals("Animales", config.snapshot().activeRoute());
         assertEquals(1, config.snapshot().routes().size());
+    }
+
+    @Test void aSavedRouteCanRemainDisabledForOneMode() {
+        Path game = directory.resolve("optional-route");
+        var config = AfkFarmConfig.get(game);
+        config.setMode(AfkFarmConfig.FarmMode.AUTONOMOUS);
+        config.saveRoute("Regreso", List.of(
+                new AfkFarmConfig.RoutePoint(1, 64, 2),
+                new AfkFarmConfig.RoutePoint(2, 64, 3)));
+        config.selectRoute("");
+        AfkFarmConfig.get(directory.resolve("other-config"));
+
+        var reloaded = AfkFarmConfig.get(game).snapshot();
+        assertTrue(reloaded.activeRoute().isBlank());
+        assertFalse(reloaded.navigationEnabled());
+        assertEquals(1, reloaded.routes().size());
     }
 
     @Test void rejectsUnusableRecordedRoutes() {

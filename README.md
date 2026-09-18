@@ -29,18 +29,26 @@ Sin una cuenta conectada se muestra
 Minecraft 1.21.x requiere Java 21 y Minecraft 26.2 requiere Java 25. Todos los
 módulos vienen desactivados por defecto.
 
-## Flujo
+## Modos de farmeo
 
-1. Espera a que mundo, jugador y conexión estén listos durante 20 ticks consecutivos.
-2. Aplica la espera posterior a la conexión y ejecuta hasta 10 comandos configurados.
-3. Conserva el estado pendiente si un `/warp` cambia al jugador de host y espera a que el
-   nuevo mundo vuelva a estar listo.
-4. Espera el intervalo de movimiento y reproduce el recorrido grabado punto por punto,
-   incluyendo saltos y cambios de altura.
-5. Al terminar, busca únicamente mobs o animales seleccionados desde la lista visual.
+El menú principal separa la automatización en tres perfiles independientes. Los tres validan
+el mismo saldo de horas en el backend antes de comenzar y mantienen la sesión de consumo activa
+durante esperas, reconexiones y recorridos.
+
+- **AFK Directo** ataca desde la ubicación actual y se detiene ante una desconexión, cambio de
+  mundo/host o traslado fuera de la zona de farmeo.
+- **AFK Reconexión** vuelve a conectarse después de una desconexión y entonces ejecuta los
+  comandos, recorrido y selección de mobs de su perfil. Un traslado de host sin desconexión lo detiene.
+- **AFK Autónomo** espera cinco minutos después de una desconexión o un traslado inesperado,
+  vuelve al servidor cuando corresponde y reproduce comandos, recorrido y ataque.
+
+El inicio normal siempre comienza a atacar en la ubicación actual. Los comandos y recorridos son
+un procedimiento de regreso que solo se reproduce al recuperarse de una interrupción. Antes de
+reanudar ataques, el cliente comprueba que regresó cerca del punto donde comenzó a farmear.
 
 Los recorridos se graban caminando desde la pestaña **Recorrido**, pueden guardarse con nombre,
-reutilizarse y eliminarse. La versión 2 del JSON migra automáticamente configuraciones anteriores.
+reutilizarse y eliminarse. La versión 5 del JSON migra automáticamente configuraciones anteriores
+y conserva perfiles separados para cada modo.
 Durante la reproducción se usa una mira adelantada para suavizar curvas, se resincronizan puntos
 sobrepasados y los saltos son pulsos breves. Si no existe progreso real durante seis segundos, el
 flujo se detiene con un diagnóstico en lugar de quedarse girando indefinidamente.
