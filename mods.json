@@ -4,70 +4,70 @@
     "name": "MineLatino AFK Farm",
     "versions": [
       {
-        "sha1": "8a43a470bdcfc52008b2ce5345e363a9f8aec4a0",
-        "fileName": "minelatino-afk-farm-fabric-1.21.4-0.1.0-alpha.12.jar",
-        "loader": "fabric",
-        "fileSize": 109241,
-        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.12/minelatino-afk-farm-fabric-1.21.4-0.1.0-alpha.12.jar",
-        "modVersion": "0.1.0-alpha.12",
+        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.13/minelatino-afk-farm-fabric-1.21.4-0.1.0-alpha.13.jar",
         "minecraftVersions": [
           "1.21.4"
-        ]
+        ],
+        "loader": "fabric",
+        "modVersion": "0.1.0-alpha.13",
+        "fileSize": 118083,
+        "sha1": "b95cee22dfb4150b16c107088b6199bc0ec5ae08",
+        "fileName": "minelatino-afk-farm-fabric-1.21.4-0.1.0-alpha.13.jar"
       },
       {
-        "sha1": "12317ad590080d84d2c3480c48379002deac8730",
-        "fileName": "minelatino-afk-farm-forge-1.21.4-0.1.0-alpha.12.jar",
-        "loader": "forge",
-        "fileSize": 112762,
-        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.12/minelatino-afk-farm-forge-1.21.4-0.1.0-alpha.12.jar",
-        "modVersion": "0.1.0-alpha.12",
+        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.13/minelatino-afk-farm-forge-1.21.4-0.1.0-alpha.13.jar",
         "minecraftVersions": [
           "1.21.4"
-        ]
+        ],
+        "loader": "forge",
+        "modVersion": "0.1.0-alpha.13",
+        "fileSize": 121546,
+        "sha1": "76c860a7ccb8f9e284a48b9ffe27e77ca6c79d78",
+        "fileName": "minelatino-afk-farm-forge-1.21.4-0.1.0-alpha.13.jar"
       },
       {
-        "sha1": "ea1672ff0b73e342d7d203d04a505273ccfc2047",
-        "fileName": "minelatino-afk-farm-fabric-1.21.11-0.1.0-alpha.12.jar",
-        "loader": "fabric",
-        "fileSize": 109468,
-        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.12/minelatino-afk-farm-fabric-1.21.11-0.1.0-alpha.12.jar",
-        "modVersion": "0.1.0-alpha.12",
+        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.13/minelatino-afk-farm-fabric-1.21.11-0.1.0-alpha.13.jar",
         "minecraftVersions": [
           "1.21.11"
-        ]
+        ],
+        "loader": "fabric",
+        "modVersion": "0.1.0-alpha.13",
+        "fileSize": 118307,
+        "sha1": "213d454937d2f722a180401d13f87a049bf4eacf",
+        "fileName": "minelatino-afk-farm-fabric-1.21.11-0.1.0-alpha.13.jar"
       },
       {
-        "sha1": "6c8ebf4de68d6ef3c154fa71ed5abc29daf8b2e0",
-        "fileName": "minelatino-afk-farm-forge-1.21.11-0.1.0-alpha.12.jar",
-        "loader": "forge",
-        "fileSize": 112916,
-        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.12/minelatino-afk-farm-forge-1.21.11-0.1.0-alpha.12.jar",
-        "modVersion": "0.1.0-alpha.12",
+        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.13/minelatino-afk-farm-forge-1.21.11-0.1.0-alpha.13.jar",
         "minecraftVersions": [
           "1.21.11"
-        ]
-      },
-      {
-        "sha1": "aac90585174b46d0132e27d812b5e2553da352f9",
-        "fileName": "minelatino-afk-farm-fabric-26.2-0.1.0-alpha.12.jar",
-        "loader": "fabric",
-        "fileSize": 109518,
-        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.12/minelatino-afk-farm-fabric-26.2-0.1.0-alpha.12.jar",
-        "modVersion": "0.1.0-alpha.12",
-        "minecraftVersions": [
-          "26.2"
-        ]
-      },
-      {
-        "sha1": "d5bad3b6e5d68046e80ff44ed303e214792e64ec",
-        "fileName": "minelatino-afk-farm-forge-26.2-0.1.0-alpha.12.jar",
+        ],
         "loader": "forge",
-        "fileSize": 113156,
-        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.12/minelatino-afk-farm-forge-26.2-0.1.0-alpha.12.jar",
-        "modVersion": "0.1.0-alpha.12",
+        "modVersion": "0.1.0-alpha.13",
+        "fileSize": 121696,
+        "sha1": "631f1aabbd1c9628b420d5547eefe6e7229f1a9d",
+        "fileName": "minelatino-afk-farm-forge-1.21.11-0.1.0-alpha.13.jar"
+      },
+      {
+        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.13/minelatino-afk-farm-fabric-26.2-0.1.0-alpha.13.jar",
         "minecraftVersions": [
           "26.2"
-        ]
+        ],
+        "loader": "fabric",
+        "modVersion": "0.1.0-alpha.13",
+        "fileSize": 118353,
+        "sha1": "2312a48b25a74d2d538159e02ae61d4795c04526",
+        "fileName": "minelatino-afk-farm-fabric-26.2-0.1.0-alpha.13.jar"
+      },
+      {
+        "downloadUrl": "https://github.com/GatinoMC/MineLatino-Afk-Farm/releases/download/v0.1.0-alpha.13/minelatino-afk-farm-forge-26.2-0.1.0-alpha.13.jar",
+        "minecraftVersions": [
+          "26.2"
+        ],
+        "loader": "forge",
+        "modVersion": "0.1.0-alpha.13",
+        "fileSize": 121926,
+        "sha1": "b50f972c00389b68b253d6d2223f86e4721da47e",
+        "fileName": "minelatino-afk-farm-forge-26.2-0.1.0-alpha.13.jar"
       }
     ]
   }
